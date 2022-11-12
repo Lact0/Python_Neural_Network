@@ -1,5 +1,6 @@
 from math import *
 from random import *
+import json
 
 # Activation Functions
 # Function is index 0, Derivative is index 1
@@ -7,9 +8,12 @@ sigmoid = [lambda x: 1 / (1 + exp(-x)), lambda x: (1 / (1 + exp(-x))) * (1 - (1 
 relu = [lambda x: max(0, x), lambda x: 0 if x < 0 else 1]
 none = [lambda x: x, lambda x: 1]
 
+act = {'sigmoid': sigmoid, 'relu':  relu, 'none': none}
+
 #Error Functions
 ssr = [lambda pred, ans: sum([(ans[i] - pred[i]) ** 2 for i in range(len(pred))]), lambda pred, ans: [-2 * (ans[i] - pred[i]) for i in range(len(pred))]]
 
+err = {'ssr': ssr}
 
 def gradientMean(gradients):
   ret = []
@@ -24,8 +28,27 @@ def gradientMean(gradients):
     ret.append(temp1)
   return ret
 
+def loadNodeLayer(fileName):
+  file = open(fileName, 'r')
+  numIn = json.loads(file.readline())
+  width = json.loads(file.readline())
+  actFunc = json.loads(file.readline())
+  weights = json.loads(file.readline())
+  return nodeLayer(numIn, width, actFunc, weights)
+
+def saveNodeLayer(fileName, layer):
+  file = open(fileName, 'w')
+  file.write(json.dumps(layer.numIn))
+  file.write('\n')
+  file.write(json.dumps(len(layer.weights)))
+  file.write('\n')
+  file.write(json.dumps(layer.actFunc))
+  file.write('\n')
+  file.write(json.dumps(layer.weights))
+  file.close()
+
 class nodeLayer:
-    def __init__(this, numIn, width, actFunc=none, weights=False):
+    def __init__(this, numIn, width, actFunc='none', weights=False):
         this.numIn = numIn
         this.actFunc = actFunc
         this.weights = []
@@ -44,7 +67,7 @@ class nodeLayer:
         for weights in this.weights:
             total = [inp[i] * weights[i] for i in range(this.numIn + 1)]
             sm = sum(total)
-            out.append(this.actFunc[0](sm))
+            out.append(act[this.actFunc][0](sm))
         inp.pop()
         return out
 
@@ -55,7 +78,7 @@ class nodeLayer:
             weights = this.weights[i]
             temp = []
             total = [inp[x] * weights[x] for x in range(this.numIn + 1)]
-            prev = outputGradient[i] * this.actFunc[1](sum(total))
+            prev = outputGradient[i] * act[this.actFunc][1](sum(total))
             for j in range(len(weights)):
                 temp.append(prev * inp[j])
             ret.append(temp)
@@ -73,22 +96,54 @@ class nodeLayer:
         for x in range(len(this.weights)):
             weights = this.weights[x]
             sm = sum([inp[i] * weights[i] for i in range(len(inp))])
-            grad = outputGradient[x] * this.actFunc[1](sm)
+            grad = outputGradient[x] * act[this.actFunc][1](sm)
             for i in range(len(inp)):
                 ret[i] += grad * weights[i]
         inp.pop()
         return ret
 
+def loadFNN(fileName):
+  file = open(fileName, 'r')
+  numIn = json.loads(file.readline())
+  dim = json.loads(file.readline())
+  actFuncs = json.loads(file.readline())
+  errFunc = json.loads(file.readline())
+  weights = json.loads(file.readline())
+  return FNN(numIn, dim, actFuncs, errFunc, weights)
+
+def saveFNN(fileName, net):
+  file = open(fileName, 'w')
+  file.write(json.dumps(net.numIn))
+  file.write('\n')
+  file.write(json.dumps(net.dim))
+  file.write('\n')
+  file.write(json.dumps(net.actFuncs))
+  file.write('\n')
+  file.write(json.dumps(net.errFunc))
+  file.write('\n')
+  weights = []
+  for i in net.layers:
+    weights += [i.weights]
+  file.write(json.dumps(weights))
+  file.close()
+
 class FNN:
-  def __init__(this, numIn, dim, actFuncs, errFunc):
+  def __init__(this, numIn, dim, actFuncs, errFunc, weights = False):
     this.numIn = numIn
     this.dim = dim
     this.layers = []
+    this.actFuncs = actFuncs
     this.errFunc = errFunc
-    for i in range(len(dim)):
-      nIn = dim[i - 1] if i > 0 else numIn
-      lay = nodeLayer(nIn, dim[i], actFuncs[i])
-      this.layers += [lay]
+    if not weights:
+      for i in range(len(dim)):
+        nIn = dim[i - 1] if i > 0 else numIn
+        lay = nodeLayer(nIn, dim[i], actFuncs[i])
+        this.layers += [lay]
+    else:
+      for i in range(len(dim)):
+        nIn = dim[i - 1] if i > 0 else numIn
+        lay = nodeLayer(nIn, dim[i], actFuncs[i], weights[i])
+        this.layers += [lay]
   
   def feed(this, inp):
     nextIn = inp
@@ -101,15 +156,12 @@ class FNN:
     for layer in this.layers:
       inputs += [layer.feed(inputs[-1])]
     weightGradient = []
-    errGrad = this.errFunc[1](inputs[-1], ans)
+    outGrad = err[this.errFunc][1](inputs[-1], ans)
     for i in range(len(this.layers) - 1, -1, -1):
       layer = this.layers[i]
-      outGrad = 0
-      if len(weightGradient) == 0:
-        outGrad = errGrad
-      else:
-        outGrad = weightGradient[0]
       weightGradient = [layer.getWeightGradient(outGrad, inputs[i])] + weightGradient
+      if len(weightGradient) != 0:
+        outGrad = layer.getInputGradient(outGrad, inputs[i])
     return weightGradient
 
   def applyGradient(this, grad, lr):

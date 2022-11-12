@@ -1,34 +1,43 @@
 from nn import *
 
-l1 = nodeLayer(1, 20, sigmoid)
-l2 = nodeLayer(20, 1, sigmoid)
 lr = .01
-n = 2
-f = lambda x: sin(x)
+n = 100
+f = lambda x: sqrt(9 - (x - 3) ** 2)
 
-net = FNN(1, [20, 1], [sigmoid, sigmoid], ssr)
+net = loadFNN('stored.txt')
 
 def trainBatch():
   gradients = []
   AvgErr = 0
   for i in range(n):
-    x = random() * 3.1415926535897 * 2
-    gradient = []
-    out1 = l1.feed([x])
-    out2 = l2.feed(out1)
-    outGrad = ssr[1](out2, [f(x)])
-    AvgErr += ssr[0](out2, [f(x)])
-    gradient += [l2.getWeightGradient(outGrad, out1)]
-    outGrad = l2.getInputGradient(outGrad, out1)
-    gradient = [l1.getWeightGradient(outGrad, [f(x)])] + gradient
+    x = 6 / n * i
+    out = net.feed([x])
+    AvgErr += ssr[0](out, [f(x)])
+    gradient = net.getWeightGradient([x], [f(x)])
     gradients += [gradient]
   gradient = gradientMean(gradients)
-  l1.applyGradient(gradient[0], lr)
-  l2.applyGradient(gradient[1], lr)
+  net.applyGradient(gradient, lr)
   print('Avg err: ', AvgErr / n)
 
-def train():
-  for i in range(100000):
-    trainBatch()
+def trainPoint(x):
+  out = net.feed([x])
+  err = ssr[0](out, [f(x)])
+  gradient = net.getWeightGradient([x], [f(x)])
+  net.applyGradient(gradient, lr)
+  return err
 
-train()
+def newNet():
+  return FNN(1, [5, 5, 1], ['relu', 'relu', 'relu'], 'ssr')
+
+def train(k = 100):
+  for i in range(k):
+    trainBatch()
+    saveFNN('stored.txt', net)
+
+def trainP(loops = 1):
+  for j in range(loops):
+    errors = []
+    for i in range(n):
+      errors.append(trainPoint(6 / n * i))
+    print("Avg Err", sum(errors) / n)
+    saveFNN('stored.txt', net)
